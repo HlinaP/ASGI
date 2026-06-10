@@ -27,6 +27,9 @@ if st.button("📥 Stáhnout obrázky"):
             st.stop()
 
         os.makedirs(output_folder, exist_ok=True)
+        st.write("Aktuální pracovní adresář:", os.getcwd())
+        st.write("Výstupní adresář:", os.path.abspath(output_folder))
+        st.write("Adresář existuje:", os.path.exists(output_folder))
 
         session = requests.Session()
         session.auth = (username, password)
