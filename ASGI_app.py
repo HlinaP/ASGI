@@ -74,7 +74,7 @@ if st.button("📥 Stáhnout obrázky"):
 
             progress.progress(index / total)
 
-            time.sleep(random.uniform(7, 11))
+            time.sleep(random.uniform(3, 7))
 
     zip_buffer.seek(0)
 
