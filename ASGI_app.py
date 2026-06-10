@@ -3,9 +3,8 @@ import requests
 import base64
 import time
 import random
-import os
 import zipfile
-import shutil
+from io import BytesIO
 
 st.title("Stahování obrázků z prohlížečky ČGS")
 
@@ -29,25 +28,18 @@ if st.button("📥 Stáhnout obrázky"):
         st.error(f"Chyba při dekódování ID: {e}")
         st.stop()
 
-    output_folder = "temp_images"
-
-    # Vyčistit starou složku
-    if os.path.exists(output_folder):
-        shutil.rmtree(output_folder)
-
-    os.makedirs(output_folder)
-
     session = requests.Session()
     session.auth = (username, password)
 
-    pocet_stazenych = 0
+    zip_buffer = BytesIO()
 
-    with st.spinner("Stahuji obrázky..."):
+    total = end_id - start_id + 1
+    progress = st.progress(0)
+    status_text = st.empty()
 
-        progress = st.progress(0)
-        status_text = st.empty()
+    downloaded = 0
 
-        total = end_id - start_id + 1
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
 
         for index, i in enumerate(range(start_id, end_id + 1), start=1):
 
@@ -60,59 +52,43 @@ if st.button("📥 Stáhnout obrázky"):
 
             try:
                 r = session.get(url, timeout=30)
-
                 content_type = r.headers.get("Content-Type", "")
 
                 if r.status_code == 200 and content_type.startswith("image"):
 
-                    filename = os.path.join(
-                        output_folder,
-                        f"stranka_{index}.jpg"
-                    )
+                    filename = f"stranka_{index}.jpg"
 
-                    with open(filename, "wb") as f:
-                        f.write(r.content)
+                    # PŘÍMO do ZIPu (žádný disk)
+                    zipf.writestr(filename, r.content)
 
-                    pocet_stazenych += 1
-
-                    status_text.info(
-                        f"Staženo {index}/{total}: stranka_{index}.jpg"
-                    )
+                    downloaded += 1
+                    status_text.info(f"Staženo {index}/{total}")
 
                 else:
-                    st.warning(
-                        f"Přeskočeno: stránka {index} "
-                        f"(status={r.status_code}, typ={content_type})"
+                    status_text.warning(
+                        f"Přeskočeno {index} (status={r.status_code}, typ={content_type})"
                     )
 
             except Exception as e:
-                st.error(f"Chyba u obrázku {index}: {e}")
+                status_text.error(f"Chyba u obrázku {index}: {e}")
 
             progress.progress(index / total)
 
-            delay = random.uniform(7, 11)
-            time.sleep(delay)
+            time.sleep(random.uniform(7, 11))
 
-    if pocet_stazenych == 0:
+    zip_buffer.seek(0)
+
+    if downloaded == 0:
         st.error("Nepodařilo se stáhnout žádné obrázky.")
         st.stop()
 
-    zip_path = "obrazky.zip"
+    st.success(f"Hotovo! Staženo {downloaded} obrázků.")
 
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
-
-        for file in sorted(os.listdir(output_folder)):
-            full_path = os.path.join(output_folder, file)
-            zipf.write(full_path, arcname=file)
-
-    st.success(f"Hotovo! Staženo {pocet_stazenych} obrázků.")
-
-    with open(zip_path, "rb") as f:
-        st.download_button(
-            label="📦 Stáhnout ZIP s obrázky",
-            data=f,
-            file_name=f"agenda_{agenda}.zip",
-            mime="application/zip"
-        )
+    st.download_button(
+        label="📦 Stáhnout ZIP s obrázky",
+        data=zip_buffer,
+        file_name=f"agenda_{agenda}.zip",
+        mime="application/zip"
+    )
 
     st.balloons()
