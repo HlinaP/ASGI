@@ -4,61 +4,115 @@ import base64
 import time
 import random
 import os
+import zipfile
+import shutil
 
 st.title("Stahování obrázků z prohlížečky ČGS")
 
 # Uživatelské vstupy
-username = st.text_input("Uživatelské jméno", )
+username = st.text_input("Uživatelské jméno")
 password = st.text_input("Heslo", type="password")
 agenda = st.text_input("Agenda ID (např. 45123)")
 img_start = st.text_input("ID první stránky (např. MzY1OTc0MA==)")
 img_end = st.text_input("ID poslední stránky (např. MzY1OTkyNA==)")
-output_folder = st.text_input("Cesta k adresáři pro uložení", value=r"T:\OGGP_KNIHOVNA\ASGI")
 
 if st.button("📥 Stáhnout obrázky"):
-    if not all([username, password, agenda, img_start, img_end, output_folder]):
-        st.error(" ❗ Vyplň prosím všechna pole")
-    else:
-        try:
-            start_id = int(base64.b64decode(img_start).decode())
-            end_id = int(base64.b64decode(img_end).decode())
-        except Exception as e:
-            st.error(f"Chyba při dekódování ID: {e}")
-            st.stop()
 
-        os.makedirs(output_folder, exist_ok=True)
- 
-        session = requests.Session()
-        session.auth = (username, password)
+    if not all([username, password, agenda, img_start, img_end]):
+        st.error("❗ Vyplň prosím všechna pole")
+        st.stop()
 
-        with st.spinner("Stahuji obrázky..."):
-            status_text = st.empty()
-            for i in range(start_id, end_id + 1):
-                kod = base64.b64encode(str(i).encode()).decode()
-                url = f"https://docview.geology.cz/prohlizecka/ovladac.php?img={kod}&f=F&agenda={agenda}"
+    try:
+        start_id = int(base64.b64decode(img_start).decode())
+        end_id = int(base64.b64decode(img_end).decode())
+    except Exception as e:
+        st.error(f"Chyba při dekódování ID: {e}")
+        st.stop()
 
-                try:
-                    r = session.get(url)
-                    content_type = r.headers.get("Content-Type", "")
+    output_folder = "temp_images"
 
-                    if r.status_code == 200 and content_type.startswith("image"):
-                        filename = os.path.join(output_folder, f"stranka_{i - start_id + 1}.jpg")
-                        with open(filename, "wb") as f:
-                            f.write(r.content)
-                         # DEBUG
-                        st.write("Soubor:", filename)
-                        st.write("Existuje:", os.path.exists(filename))
-                        st.write("Velikost:", os.path.getsize(filename))
-                        
-                        status_text.success(f"Staženo: {filename}")
-                        
-                    else:
-                        st.warning(f"Přeskočeno (neobrázkový obsah): {url}")
-                except Exception as e:
-                    st.error(f"Chyba u obrázku {i}: {e}")
+    # Vyčistit starou složku
+    if os.path.exists(output_folder):
+        shutil.rmtree(output_folder)
 
-                delay = random.uniform(7, 11)  # Kratší delay, ať to netrvá moc dlouho při testu
-                time.sleep(delay)
+    os.makedirs(output_folder)
 
-        st.balloons()
-        st.success("Hotovo!")
+    session = requests.Session()
+    session.auth = (username, password)
+
+    pocet_stazenych = 0
+
+    with st.spinner("Stahuji obrázky..."):
+
+        progress = st.progress(0)
+        status_text = st.empty()
+
+        total = end_id - start_id + 1
+
+        for index, i in enumerate(range(start_id, end_id + 1), start=1):
+
+            kod = base64.b64encode(str(i).encode()).decode()
+
+            url = (
+                f"https://docview.geology.cz/prohlizecka/"
+                f"ovladac.php?img={kod}&f=F&agenda={agenda}"
+            )
+
+            try:
+                r = session.get(url, timeout=30)
+
+                content_type = r.headers.get("Content-Type", "")
+
+                if r.status_code == 200 and content_type.startswith("image"):
+
+                    filename = os.path.join(
+                        output_folder,
+                        f"stranka_{index}.jpg"
+                    )
+
+                    with open(filename, "wb") as f:
+                        f.write(r.content)
+
+                    pocet_stazenych += 1
+
+                    status_text.info(
+                        f"Staženo {index}/{total}: stranka_{index}.jpg"
+                    )
+
+                else:
+                    st.warning(
+                        f"Přeskočeno: stránka {index} "
+                        f"(status={r.status_code}, typ={content_type})"
+                    )
+
+            except Exception as e:
+                st.error(f"Chyba u obrázku {index}: {e}")
+
+            progress.progress(index / total)
+
+            delay = random.uniform(7, 11)
+            time.sleep(delay)
+
+    if pocet_stazenych == 0:
+        st.error("Nepodařilo se stáhnout žádné obrázky.")
+        st.stop()
+
+    zip_path = "obrazky.zip"
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+
+        for file in sorted(os.listdir(output_folder)):
+            full_path = os.path.join(output_folder, file)
+            zipf.write(full_path, arcname=file)
+
+    st.success(f"Hotovo! Staženo {pocet_stazenych} obrázků.")
+
+    with open(zip_path, "rb") as f:
+        st.download_button(
+            label="📦 Stáhnout ZIP s obrázky",
+            data=f,
+            file_name=f"agenda_{agenda}.zip",
+            mime="application/zip"
+        )
+
+    st.balloons()
