@@ -27,10 +27,7 @@ if st.button("📥 Stáhnout obrázky"):
             st.stop()
 
         os.makedirs(output_folder, exist_ok=True)
-        st.write("Aktuální pracovní adresář:", os.getcwd())
-        st.write("Výstupní adresář:", os.path.abspath(output_folder))
-        st.write("Adresář existuje:", os.path.exists(output_folder))
-
+ 
         session = requests.Session()
         session.auth = (username, password)
 
@@ -48,6 +45,11 @@ if st.button("📥 Stáhnout obrázky"):
                         filename = os.path.join(output_folder, f"stranka_{i - start_id + 1}.jpg")
                         with open(filename, "wb") as f:
                             f.write(r.content)
+                         # DEBUG
+                        st.write("Soubor:", filename)
+                        st.write("Existuje:", os.path.exists(filename))
+                        st.write("Velikost:", os.path.getsize(filename))
+                        
                         status_text.success(f"Staženo: {filename}")
                         
                     else:
